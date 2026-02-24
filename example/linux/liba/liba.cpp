@@ -15,9 +15,19 @@ struct liba_message_t
     uint8_t b;
 };
 
-std::vector <liba_message_t> queue;
-std::mutex queue_mutex;  // Protect queue access
-std::atomic<bool> stop_thread{false};  // Flag to stop the thread
+std::vector<liba_message_t> queue;
+std::mutex queue_mutex;
+std::atomic<bool> stop_thread{false};
+
+// Dart notification callback — set by set_message_callback, called from the
+// worker thread whenever a new message is pushed onto the queue.
+static void (*g_callback)() = nullptr;
+
+EXPORT
+void set_message_callback(void (*cb)())
+{
+    g_callback = cb;
+}
 
 EXPORT
 void start_service()
@@ -27,21 +37,21 @@ void start_service()
         std::random_device rd;
         std::mt19937 gen(rd());
         std::uniform_int_distribution<uint8_t> dis(0, 255);
-        
+
         while (!stop_thread) {
-            // Create random struct
             liba_message_t msg;
             msg.r = dis(gen);
             msg.g = dis(gen);
             msg.b = dis(gen);
-            
-            // Add to queue with thread safety
+
             {
                 std::lock_guard<std::mutex> lock(queue_mutex);
                 queue.push_back(msg);
             }
-            
-            // Wait 5 seconds
+
+            // Notify Dart that a new message is available.
+            if (g_callback) g_callback();
+
             std::this_thread::sleep_for(std::chrono::seconds(2));
         }
     }};
@@ -55,27 +65,19 @@ void stop_service()
 }
 
 EXPORT
-liba_message_t * get_next_message()
+liba_message_t* get_next_message()
 {
     std::lock_guard<std::mutex> lock(queue_mutex);
-
-    if(queue.size() > 0)
-    {
-        return &queue.front();
-    }
-    else
-    {
-        return nullptr;
-    }
+    return queue.empty() ? nullptr : &queue.front();
 }
 
 EXPORT
-void free_message(liba_message_t * msg_to_free)
+void free_message(liba_message_t* msg_to_free)
 {
     std::lock_guard<std::mutex> lock(queue_mutex);
-    for(auto idx = 0 ; idx < queue.size(); ++idx)
+    for (auto idx = 0; idx < static_cast<int>(queue.size()); ++idx)
     {
-        if(&queue[idx] == msg_to_free)
+        if (&queue[idx] == msg_to_free)
         {
             queue.erase(queue.begin() + idx);
             break;
@@ -86,5 +88,5 @@ void free_message(liba_message_t * msg_to_free)
 EXPORT
 uint32_t get_hexa_color(liba_message_t* msg)
 {
-    return 0xFF << 24 | msg->r << 16 | msg->g << 8 | msg->b ;
+    return 0xFF << 24 | msg->r << 16 | msg->g << 8 | msg->b;
 }

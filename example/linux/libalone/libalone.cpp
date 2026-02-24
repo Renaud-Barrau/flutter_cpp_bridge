@@ -2,7 +2,7 @@
 
 #define EXPORT extern "C" __attribute__((visibility("default")))
 
-// StandaloneService requires these four symbols even if they are no-ops.
+// StandaloneService requires these five symbols even if they are no-ops.
 
 EXPORT
 void start_service()
@@ -22,6 +22,12 @@ void* get_next_message()
 
 EXPORT
 void free_message([[maybe_unused]] void* msg)
+{
+}
+
+// No message queue: set_message_callback is a no-op.
+EXPORT
+void set_message_callback([[maybe_unused]] void (*cb)())
 {
 }
 

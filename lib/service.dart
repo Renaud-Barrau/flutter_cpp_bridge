@@ -11,17 +11,27 @@ import 'package:flutter/foundation.dart';
 /// read fields from the pointer.
 final class BackendMsg extends Opaque {}
 
+/// Native type for the no-argument notification callback passed to
+/// `set_message_callback`.
+typedef _NotifyNative = Void Function();
+
 /// Base class for a C++ shared-library service accessed through `dart:ffi`.
 ///
 /// A *service* is a shared library (`.so` / `.dll` / `.dylib`) that exports
-/// at least these four C functions:
+/// exactly these five C functions:
 ///
 /// ```c
 /// void start_service();
 /// void stop_service();
-/// T*   get_next_message();   // T is your message struct
+/// T*   get_next_message();        // T is your message struct; nullptr = empty
 /// void free_message(T*);
+/// void set_message_callback(void (*cb)());  // store cb; call it when a message is ready
 /// ```
+///
+/// Instead of a periodic polling timer, each service registers a
+/// [NativeCallable] with `set_message_callback`. The C++ worker thread calls
+/// the callback whenever a new message is pushed; Dart then drains the entire
+/// queue in one shot on the event loop — zero CPU consumption at idle.
 ///
 /// ## Subclassing
 ///
@@ -41,33 +51,30 @@ final class BackendMsg extends Opaque {}
 ///
 /// ## Receiving messages
 ///
-/// Use [assignJob] to register a callback that is invoked for every message
-/// polled from the C++ queue:
+/// Use [assignJob] to register a callback that is invoked for every message:
 ///
 /// ```dart
 /// colorService.assignJob((msg) {
-///   if (msg != nullptr) {
-///     myNotifier.value = colorService.getColor(msg);
-///   }
+///   myNotifier.value = colorService.getColor(msg);
 /// });
 /// ```
 ///
-/// [freeMessage] is called automatically after the job returns, so you do
-/// **not** need to call it manually inside the callback.
+/// [freeMessage] is called automatically after the job returns.
 ///
 /// ## Lifecycle
 ///
 /// Add the service to a [ServicePool] (which calls [startService] for you),
 /// or subclass [StandaloneService] to start the service immediately.
+/// Call [dispose] when done.
 class Service {
-  /// Creates a [Service] by opening the shared library at [libname] and
-  /// binding the four mandatory C functions.
+  /// Creates a [Service] by opening the shared library at [libname], binding
+  /// the five mandatory C functions, and registering the notification callback.
   ///
   /// [libname] is the path passed to [DynamicLibrary.open] — typically just
   /// the file name (e.g. `"libaudio.so"`) when the library is bundled next to
   /// the executable.
   Service(this.libname) {
-    lib = (DynamicLibrary.open(libname));
+    lib = DynamicLibrary.open(libname);
 
     startService = lib
         .lookup<NativeFunction<Void Function()>>('start_service')
@@ -88,22 +95,57 @@ class Service {
           'free_message',
         )
         .asFunction<void Function(Pointer<BackendMsg>)>();
+
+    final setMessageCallback = lib
+        .lookup<NativeFunction<
+            Void Function(Pointer<NativeFunction<_NotifyNative>>)>>(
+          'set_message_callback',
+        )
+        .asFunction<
+            void Function(Pointer<NativeFunction<_NotifyNative>>)>();
+
+    // NativeCallable.listener is safe to call from any thread: the C++ worker
+    // posts the notification and Dart schedules _onNotify on the event loop.
+    _callable = NativeCallable<_NotifyNative>.listener(_onNotify);
+    setMessageCallback(_callable.nativeFunction);
   }
 
-  /// Registers a callback that is invoked each time a message is polled.
+  /// Called on the Dart event loop each time the C++ side signals a new
+  /// message. Retrieves one message and pushes it onto [messageController].
   ///
-  /// [job] receives a [Pointer<BackendMsg>] which may be `nullptr` when the
-  /// C++ queue is empty. [freeMessage] is called automatically once [job]
-  /// returns (only when the pointer is non-null).
+  /// One callback invocation = one message: C++ must call `cb()` exactly once
+  /// per message pushed. A drain loop is intentionally avoided here because
+  /// [messageController] delivers asynchronously — [freeMessage] would not be
+  /// called before the next [getNextMessage], causing an infinite loop on any
+  /// service whose [getNextMessage] does not return `nullptr` immediately after
+  /// the first call.
+  void _onNotify() {
+    final msg = getNextMessage();
+    if (msg != nullptr) {
+      messageController.add(msg);
+    }
+  }
+
+  /// Registers [job] as the handler invoked for every message emitted by this
+  /// service.
+  ///
+  /// [job] receives a non-null [Pointer<BackendMsg>]. [freeMessage] is called
+  /// automatically once [job] returns.
   @nonVirtual
   void assignJob(void Function(Pointer<BackendMsg>) job) {
     messageStream.listen((message) {
       job(message);
-      if(message != nullptr)
-      {
-        freeMessage(message);
-      }
+      freeMessage(message);
     });
+  }
+
+  /// Stops the service and releases the native callback.
+  ///
+  /// Calls the C++ `stop_service` function and closes the [NativeCallable],
+  /// allowing the Dart isolate to exit cleanly.
+  void dispose() {
+    stopService();
+    _callable.close();
   }
 
   /// Path to the shared library, as passed to [DynamicLibrary.open].
@@ -115,10 +157,10 @@ class Service {
   @protected
   late DynamicLibrary lib;
 
-  /// Broadcast stream of raw message pointers polled from the C++ queue.
+  /// Broadcast stream of raw message pointers drained from the C++ queue.
   ///
-  /// Prefer [assignJob] over listening to this stream directly, as [assignJob]
-  /// also handles calling [freeMessage].
+  /// Only non-null pointers are emitted. Prefer [assignJob] over listening
+  /// to this stream directly, as [assignJob] also handles [freeMessage].
   final StreamController<Pointer<BackendMsg>> messageController =
       StreamController<Pointer<BackendMsg>>.broadcast();
 
@@ -126,14 +168,16 @@ class Service {
   Stream<Pointer<BackendMsg>> get messageStream => messageController.stream;
 
   /// Bound to the C `start_service()` function.
-  late Function startService;
+  late void Function() startService;
 
   /// Bound to the C `stop_service()` function.
-  late Function stopService;
+  late void Function() stopService;
 
   /// Bound to the C `get_next_message()` function.
-  late Function getNextMessage;
+  late Pointer<BackendMsg> Function() getNextMessage;
 
   /// Bound to the C `free_message()` function.
-  late Function freeMessage;
+  late void Function(Pointer<BackendMsg>) freeMessage;
+
+  late NativeCallable<_NotifyNative> _callable;
 }
