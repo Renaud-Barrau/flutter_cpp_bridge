@@ -32,7 +32,6 @@ class MainApp extends StatelessWidget {
     // messages — the stream never emits nullptr since switching to NativeCallable.
     libaService.assignJob((message) {
       color.value = libaService.getHexaColor(message);
-      print(""); // make sure C++ printfs get outputted
       libAlone.hello();
     });
 
