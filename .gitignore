@@ -1,0 +1,63 @@
+# ============================================================
+# Flutter / Dart – package
+# ============================================================
+
+# Pub generated outputs
+.dart_tool/
+.pub-cache/
+.pub/
+
+# Flutter generated plugin manifests
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Libraries do not commit pubspec.lock
+# https://dart.dev/guides/libraries/private-files#pubspeclock
+pubspec.lock
+
+# Dartdoc generated API docs
+**/doc/api/
+
+# Dart / Flutter build output (all levels: root, example/, example/linux/…)
+**/build/
+/coverage/
+
+# Flutter auto-generated project metadata
+.metadata
+
+# ============================================================
+# Flutter Linux plugin platform
+# ============================================================
+
+# Generated Flutter embedding glue (plugin side)
+linux/flutter/ephemeral/
+
+# ============================================================
+# C++ / CMake build artifacts
+# ============================================================
+
+*.o
+*.a
+*.so
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+
+# ============================================================
+# IDE
+# ============================================================
+
+*.iml
+*.ipr
+*.iws
+.idea/
+# .vscode/   # uncomment if you don't track workspace settings
+
+# ============================================================
+# OS / Editor temporaries
+# ============================================================
+
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
