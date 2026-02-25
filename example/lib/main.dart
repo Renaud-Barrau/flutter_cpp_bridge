@@ -33,7 +33,6 @@ class MainApp extends StatelessWidget {
     libaService.assignJob((message) {
       if (message != nullptr) {
         color.value = libaService.getHexaColor(message);
-        print(""); // make sure C++ printfs get outputed
         libAlone.hello();
       }
     });

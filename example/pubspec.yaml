@@ -17,6 +17,8 @@ dependencies:
   flutter:
     sdk: flutter
 
+  ffi: ^2.1.0
+
   flutter_cpp_bridge:
     # When depending on this package from a real application you should use:
     #   flutter_cpp_bridge: ^x.y.z
