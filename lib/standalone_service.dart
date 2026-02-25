@@ -4,7 +4,8 @@ import 'service.dart';
 ///
 /// Use this when a service should run independently without being added to a
 /// [ServicePool]. The service's `start_service` C function is called in the
-/// constructor. Call [dispose] to invoke `stop_service` when done.
+/// constructor. Call [dispose] (inherited from [Service]) to invoke
+/// `stop_service` and release the native callback when done.
 ///
 /// ## Example
 ///
@@ -25,15 +26,9 @@ import 'service.dart';
 /// logger.dispose();
 /// ```
 class StandaloneService extends Service {
-  /// Opens [libname] and immediately calls `start_service`.
-  StandaloneService(super.libname)
-  {
+  /// Opens [libname], registers the notification callback, and immediately
+  /// calls `start_service`.
+  StandaloneService(super.libname) {
     startService();
-  }
-
-  /// Calls `stop_service` on the underlying C++ service.
-  void dispose()
-  {
-    stopService();
   }
 }

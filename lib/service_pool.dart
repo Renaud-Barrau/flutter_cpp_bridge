@@ -1,8 +1,11 @@
-import 'dart:async';
 import 'service.dart';
 
-/// Manages a collection of [Service] instances and periodically polls them
-/// for new messages.
+/// Manages a collection of [Service] instances.
+///
+/// Each service is started when added via [addService]. Message delivery is
+/// event-driven: each [Service] registers a native callback with the C++ side
+/// (`set_message_callback`) and drains its own queue when the C++ worker
+/// notifies it. No periodic timer is involved.
 ///
 /// ## Basic usage
 ///
@@ -13,18 +16,16 @@ import 'service.dart';
 /// colorService.assignJob((msg) { /* ... */ });
 ///
 /// pool.addService(colorService);
-/// pool.startPolling(); // polls every 100 ms by default
+/// // No startPolling() needed — messages are delivered on demand.
 /// ```
 ///
 /// Call [dispose] when the pool is no longer needed to stop all services.
 class ServicePool {
 
-  /// Stops all registered services and cancels the polling timer.
-  void dispose()
-  {
-    for(final service in _services)
-    {
-      service.stopService();
+  /// Stops all registered services and releases their native callbacks.
+  void dispose() {
+    for (final service in _services) {
+      service.dispose();
     }
   }
 
@@ -37,34 +38,5 @@ class ServicePool {
     return true;
   }
 
-  /// Starts periodic polling of all registered services.
-  ///
-  /// Every [interval] (default: 100 ms) [poll] is called, which pushes the
-  /// next available message from each service onto its [Service.messageStream].
-  ///
-  /// Calling [startPolling] again cancels the previous timer before starting
-  /// a new one.
-  void startPolling({Duration interval = const Duration(milliseconds: 100)})
-  {
-    _pollingTimer?.cancel();
-    _pollingTimer = Timer.periodic(interval, (timer) {
-      poll();
-    });
-  }
-
-  /// Polls every registered service once and feeds the result into each
-  /// service's [Service.messageController].
-  ///
-  /// You rarely need to call this directly — prefer [startPolling].
-  void poll()
-  {
-    for(final service in _services)
-    {
-      var nextMsg = service.getNextMessage();
-      service.messageController.add(nextMsg);
-    }
-  }
-
   final _services = <Service>{};
-  Timer? _pollingTimer;
 }

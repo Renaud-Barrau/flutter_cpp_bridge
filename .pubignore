@@ -1,0 +1,17 @@
+# C++ plugin test (not relevant for Dart package consumers)
+linux/test/
+
+# Build artifacts (mirrors .gitignore, since .pubignore replaces it)
+**/build/
+.dart_tool/
+.pub-cache/
+.pub/
+coverage/
+**/doc/api/
+linux/flutter/ephemeral/
+*.o
+*.a
+*.so
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake

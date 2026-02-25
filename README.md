@@ -4,8 +4,8 @@ A Flutter package that simplifies calling C++ code from Dart via `dart:ffi`.
 
 Instead of writing raw FFI bindings by hand, `flutter_cpp_bridge` gives you
 three building blocks — **Service**, **ServicePool**, and **StandaloneService**
-— that handle library loading, lifecycle management, and periodic message
-polling.
+— that handle library loading, lifecycle management, and event-driven message
+delivery.
 
 > **Target platform: Linux.**
 > This package is designed for Linux-first deployments, including embedded
@@ -18,10 +18,16 @@ polling.
 
 - Load any C++ shared library (`.so`) with a single line.
 - Automatic start/stop lifecycle for your C++ services.
-- Periodic polling loop that feeds C++ messages into Dart streams.
+- **Event-driven message delivery** via `NativeCallable`: the C++ worker calls
+  a Dart callback when a message is ready — zero CPU consumption at idle.
 - Clean subclassing pattern to bind additional native functions.
 - Standalone services that run independently, outside of a pool.
 - Designed for embedded Linux / flutter-pi use cases.
+
+## Acknowledgements
+
+Special thanks to [grybouilli](https://github.com/grybouilli) for his
+significant contributions to this project !
 
 ## Getting started
 
@@ -39,7 +45,7 @@ dependencies:
 
 ## C++ side
 
-Each library must export four functions using C linkage. These are the only
+Each library must export **five** functions using C linkage. These are the only
 mandatory symbols; everything else is optional and can be added per-library.
 
 ```cpp
@@ -49,6 +55,7 @@ EXPORT void  start_service();
 EXPORT void  stop_service();
 EXPORT YourMessageType* get_next_message();   // nullptr when queue is empty
 EXPORT void  free_message(YourMessageType*);
+EXPORT void  set_message_callback(void (*cb)());
 ```
 
 - **`start_service`** / **`stop_service`**: start and stop the service (e.g.
@@ -57,6 +64,9 @@ EXPORT void  free_message(YourMessageType*);
   `nullptr` if the queue is empty. The C++ side owns the memory.
 - **`free_message`**: called by Dart when it is done with a message. The
   pointer must remain valid until this function returns.
+- **`set_message_callback`**: stores the function pointer `cb`. The C++ worker
+  calls `cb()` (from any thread) immediately after pushing a new message. Dart
+  then drains the whole queue on the event loop — no periodic timer needed.
 
 Any extra functions (to read fields, send commands, etc.) can be exported and
 bound on the Dart side through subclassing.
@@ -79,6 +89,9 @@ struct my_message_t { int value; };
 static std::vector<my_message_t> queue;
 static std::mutex mtx;
 static std::atomic<bool> running{false};
+static void (*g_callback)() = nullptr;
+
+EXPORT void set_message_callback(void (*cb)()) { g_callback = cb; }
 
 EXPORT void start_service() {
     running = true;
@@ -86,6 +99,7 @@ EXPORT void start_service() {
         int i = 0;
         while (running) {
             { std::lock_guard<std::mutex> lock(mtx); queue.push_back({i++}); }
+            if (g_callback) g_callback();   // wake up Dart
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
     }).detach();
@@ -110,9 +124,9 @@ EXPORT int get_value(my_message_t* msg) { return msg->value; }
 
 ### Minimal standalone service (C++)
 
-A service used as a command sink (no message queue needed). The four mandatory
-symbols still have to be present, but `get_next_message` always returns
-`nullptr` and `free_message` is a no-op:
+A service used as a command sink (no message queue needed). All five mandatory
+symbols must be present; `get_next_message` always returns `nullptr`,
+`free_message` and `set_message_callback` are no-ops:
 
 ```cpp
 #include <cstdio>
@@ -123,6 +137,7 @@ EXPORT void  start_service()  {}
 EXPORT void  stop_service()   {}
 EXPORT void* get_next_message() { return nullptr; }
 EXPORT void  free_message([[maybe_unused]] void* msg) {}
+EXPORT void  set_message_callback([[maybe_unused]] void (*cb)()) {}
 
 // The actual function this library exposes
 EXPORT void hello() {
@@ -157,19 +172,16 @@ final pool    = ServicePool();
 final service = MyService('libmyservice.so');
 
 service.assignJob((msg) {
-  if (msg != nullptr) {
-    print('value: ${service.getValue(msg)}');
-    // freeMessage is called automatically after this callback returns
-  }
+  // msg is guaranteed non-null here
+  print('value: ${service.getValue(msg)}');
+  // freeMessage is called automatically after this callback returns
 });
 
-pool.addService(service);          // also calls start_service
-pool.startPolling(                 // default interval: 100 ms
-  interval: const Duration(milliseconds: 50),
-);
+pool.addService(service);   // calls start_service; Dart wakes up on demand
 ```
 
-Call `pool.dispose()` to stop all services and cancel the timer.
+Call `pool.dispose()` to stop all services and release the native callbacks.
+No `startPolling()` call is needed.
 
 ### 3. Standalone services
 
@@ -191,7 +203,7 @@ class HelloService extends StandaloneService {
 final greeter = HelloService('libhello.so');
 greeter.hello(); // prints "Hello from C++!" — C++ service already running
 // ...
-greeter.dispose(); // calls stop_service
+greeter.dispose(); // calls stop_service and releases the NativeCallable
 ```
 
 ### 4. Sharing service instances across the app
@@ -208,6 +220,23 @@ class Services {
 // Anywhere in the app:
 Services.greeter.hello();
 ```
+
+## How event-driven delivery works
+
+```
+C++ worker thread                 Dart event loop
+─────────────────                 ───────────────
+push message to queue
+call g_callback()   ──────────►  _onNotify() scheduled
+                                  └─ drains queue with get_next_message()
+                                  └─ emits each Pointer on messageStream
+                                  └─ assignJob callback runs
+                                  └─ free_message called automatically
+```
+
+`NativeCallable.listener` (Dart SDK ≥ 3.1) makes this safe: the C++ thread
+calls the native function pointer and returns immediately; Dart processes the
+notification asynchronously on its event loop without any blocking or busy-wait.
 
 ## Compiling your C++ libraries (Linux)
 

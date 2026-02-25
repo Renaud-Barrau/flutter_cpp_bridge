@@ -1,5 +1,3 @@
-import 'dart:ffi';
-
 import 'package:ffi/ffi.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_cpp_bridge/service_pool.dart';
@@ -29,25 +27,24 @@ class MainApp extends StatelessWidget {
     // Example of standalone service
     var libAlone = AloneService("libalone.so");
 
-    // Binding service to frontend
+    // Binding service to frontend.
+    // No nullptr check needed: assignJob callbacks are only invoked for real
+    // messages — the stream never emits nullptr since switching to NativeCallable.
     libaService.assignJob((message) {
-      if (message != nullptr) {
-        color.value = libaService.getHexaColor(message);
-        libAlone.hello();
-      }
+      color.value = libaService.getHexaColor(message);
+      libAlone.hello();
     });
 
     libbService.assignJob((message) {
-      if (message != nullptr) {
-        final cPtr = libbService.getText(message);
-        text.value = cPtr.toDartString();
-      }
+      final cPtr = libbService.getText(message);
+      text.value = cPtr.toDartString();
     });
 
     servicePool.addService(libaService);
     servicePool.addService(libbService);
 
-    servicePool.startPolling();
+    // No startPolling() needed — delivery is event-driven via NativeCallable.
+
     return MaterialApp(
       home: Scaffold(
         body: Center(
