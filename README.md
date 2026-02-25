@@ -66,76 +66,155 @@ EXPORT void  set_message_callback(void (*cb)());
 Any extra functions (to read fields, send commands, etc.) can be exported and
 bound on the Dart side through subclassing.
 
-### Minimal pooled service (C++)
+### C++ helpers (recommended)
 
-A service that produces messages at a regular interval:
+The package ships a header-only helper at
+`linux/include/flutter_cpp_bridge/service_helpers.h`.
+It provides two template types and macros that generate all five mandatory
+symbols, so you only write what is unique to your service.
+
+**Wire the header into your CMakeLists.txt:**
+
+```cmake
+# In your app's top-level linux/CMakeLists.txt, before add_subdirectory:
+set(FCB_CPP_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/path/to/flutter_cpp_bridge/linux/include")
+
+# In each service library's CMakeLists.txt:
+target_include_directories(myservice PRIVATE "${FCB_CPP_INCLUDE}")
+```
+
+**Pooled service — queue variant** (`fcb::Queue<T>`):
+Each `push()` enqueues one message; Dart reads them FIFO.
+Uses `std::deque` so `push_back()` never invalidates existing pointers.
 
 ```cpp
-#include <vector>
+#include <chrono>
+#include "flutter_cpp_bridge/service_helpers.h"
+
+struct my_message_t { int value; };
+
+static fcb::Queue<my_message_t> g_svc;
+
+static void worker(fcb::Queue<my_message_t>& svc) {
+    int i = 0;
+    while (!svc.stopped()) {
+        svc.push({i++});
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+}
+
+FCB_EXPORT_SYMBOLS(g_svc, worker)
+
+FCB_EXPORT int get_value(my_message_t* msg) { return msg->value; }
+```
+
+**Pooled service — current-value variant** (`fcb::CurrentValue<T>`):
+`set()` overwrites the single stored value; Dart reads it once then releases.
+Useful when only the latest value matters (e.g. a sensor reading).
+
+```cpp
+#include <chrono>
+#include "flutter_cpp_bridge/service_helpers.h"
+
+struct sensor_msg_t { float temperature; };
+
+static fcb::CurrentValue<sensor_msg_t> g_svc;
+
+static void worker(fcb::CurrentValue<sensor_msg_t>& svc) {
+    while (!svc.stopped()) {
+        svc.set({read_sensor()});
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+}
+
+FCB_EXPORT_SYMBOLS(g_svc, worker)
+```
+
+**Standalone service** (no message queue):
+
+```cpp
+#include <cstdio>
+#include "flutter_cpp_bridge/service_helpers.h"
+
+FCB_EXPORT_STANDALONE_NOOP()
+
+FCB_EXPORT void hello() {
+    printf("Hello from C++!\n");
+    fflush(stdout);
+}
+```
+
+For standalone services that need real start/stop logic, use
+`FCB_EXPORT_STANDALONE(start_fn, stop_fn)` instead.
+
+### Manual implementation (without helpers)
+
+If you prefer to write the five symbols by hand — or need behaviour not covered
+by the helpers — see the full manual example below. The pattern used by the
+helpers (`std::deque` + `_ready` flag) is described in the comments.
+
+**Pooled service (manual):**
+
+```cpp
+#include <deque>
 #include <mutex>
 #include <thread>
 #include <chrono>
 #include <atomic>
 
-#define EXPORT extern "C" __attribute__((visibility("default")))
+#define FCB_EXPORT extern "C" __attribute__((visibility("default")))
 
 struct my_message_t { int value; };
 
-static std::vector<my_message_t> queue;
+static std::deque<my_message_t> queue;  // deque: push_back never invalidates pointers
 static std::mutex mtx;
 static std::atomic<bool> running{false};
 static void (*g_callback)() = nullptr;
 
-EXPORT void set_message_callback(void (*cb)()) { g_callback = cb; }
+FCB_EXPORT void set_message_callback(void (*cb)()) { g_callback = cb; }
 
-EXPORT void start_service() {
+FCB_EXPORT void start_service() {
     running = true;
     std::thread([] {
         int i = 0;
         while (running) {
             { std::lock_guard<std::mutex> lock(mtx); queue.push_back({i++}); }
-            if (g_callback) g_callback();   // wake up Dart
+            if (g_callback) g_callback();
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
     }).detach();
 }
 
-EXPORT void stop_service()  { running = false; }
+FCB_EXPORT void stop_service()  { running = false; }
 
-EXPORT my_message_t* get_next_message() {
+FCB_EXPORT my_message_t* get_next_message() {
     std::lock_guard<std::mutex> lock(mtx);
     return queue.empty() ? nullptr : &queue.front();
 }
 
-EXPORT void free_message(my_message_t* msg) {
+FCB_EXPORT void free_message(my_message_t* msg) {
     std::lock_guard<std::mutex> lock(mtx);
-    for (size_t i = 0; i < queue.size(); ++i)
-        if (&queue[i] == msg) { queue.erase(queue.begin() + i); break; }
+    for (auto it = queue.begin(); it != queue.end(); ++it)
+        if (&(*it) == msg) { queue.erase(it); break; }
 }
 
-// Extra getter bound on the Dart side
-EXPORT int get_value(my_message_t* msg) { return msg->value; }
+FCB_EXPORT int get_value(my_message_t* msg) { return msg->value; }
 ```
 
-### Minimal standalone service (C++)
-
-A service used as a command sink (no message queue needed). All five mandatory
-symbols must be present; `get_next_message` always returns `nullptr`,
-`free_message` and `set_message_callback` are no-ops:
+**Standalone service (manual):**
 
 ```cpp
 #include <cstdio>
 
-#define EXPORT extern "C" __attribute__((visibility("default")))
+#define FCB_EXPORT extern "C" __attribute__((visibility("default")))
 
-EXPORT void  start_service()  {}
-EXPORT void  stop_service()   {}
-EXPORT void* get_next_message() { return nullptr; }
-EXPORT void  free_message([[maybe_unused]] void* msg) {}
-EXPORT void  set_message_callback([[maybe_unused]] void (*cb)()) {}
+FCB_EXPORT void  start_service()  {}
+FCB_EXPORT void  stop_service()   {}
+FCB_EXPORT void* get_next_message() { return nullptr; }
+FCB_EXPORT void  free_message([[maybe_unused]] void* msg) {}
+FCB_EXPORT void  set_message_callback([[maybe_unused]] void (*cb)()) {}
 
-// The actual function this library exposes
-EXPORT void hello() {
+FCB_EXPORT void hello() {
     printf("Hello from C++!\n");
     fflush(stdout);
 }

@@ -57,6 +57,10 @@ pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 
+# Path to the flutter_cpp_bridge C++ helpers header.
+# Available as "flutter_cpp_bridge/service_helpers.h" in each library.
+set(FCB_CPP_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../linux/include")
+
 # Example C++ service libraries.
 add_subdirectory("liba")
 add_subdirectory("libb")
