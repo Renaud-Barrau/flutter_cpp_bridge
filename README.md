@@ -38,6 +38,29 @@ dependencies:
 > The package is not yet published on pub.dev. Install it directly from GitHub
 > using the `git` dependency syntax above.
 
+## Your project layout
+
+For each C++ service you want to call from Dart, you need:
+
+- A **Dart wrapper class** in `lib/` that extends `Service` or `StandaloneService`
+- A **C++ source file** + **CMakeLists.txt** in `linux/<myservice>/`
+- Two small additions to your app's `linux/CMakeLists.txt`
+
+```
+my_flutter_app/
+├── pubspec.yaml                    ← add flutter_cpp_bridge dependency
+├── lib/
+│   ├── main.dart
+│   └── myservice.dart             ← extends Service, binds extra C functions
+└── linux/
+    ├── CMakeLists.txt             ← add_subdirectory + install(TARGETS …)
+    └── myservice/
+        ├── CMakeLists.txt         ← add_library, PREFIX "", include dirs
+        └── myservice.cpp          ← your struct + worker + FCB_EXPORT_SYMBOLS
+```
+
+The sections below walk through each of these files.
+
 ## C++ side
 
 Each library must export **five** functions using C linkage. These are the only
@@ -76,8 +99,11 @@ symbols, so you only write what is unique to your service.
 **Wire the header into your CMakeLists.txt:**
 
 ```cmake
-# In your app's top-level linux/CMakeLists.txt, before add_subdirectory:
-set(FCB_CPP_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/path/to/flutter_cpp_bridge/linux/include")
+# In your app's linux/CMakeLists.txt, before add_subdirectory("myservice"):
+# Flutter creates this symlink automatically during `flutter pub get`.
+set(FCB_CPP_INCLUDE
+  "${CMAKE_CURRENT_SOURCE_DIR}/flutter/ephemeral/.plugin_symlinks/flutter_cpp_bridge/linux/include"
+)
 
 # In each service library's CMakeLists.txt:
 target_include_directories(myservice PRIVATE "${FCB_CPP_INCLUDE}")
@@ -326,6 +352,7 @@ project(myservice LANGUAGES CXX)
 
 add_library(myservice SHARED myservice.cpp)
 target_compile_features(myservice PRIVATE cxx_std_17)
+target_include_directories(myservice PRIVATE "${FCB_CPP_INCLUDE}")
 set_target_properties(myservice PROPERTIES
   CXX_VISIBILITY_PRESET default
   PREFIX ""               # produce myservice.so, not libmyservice.so
@@ -334,14 +361,20 @@ set_target_properties(myservice PROPERTIES
 
 ### Wiring into the Flutter app's CMakeLists.txt
 
-In your Flutter app's `linux/CMakeLists.txt`, add the subdirectory and install
-the resulting `.so` into the bundle's `lib/` directory:
+Add the following to your Flutter app's `linux/CMakeLists.txt` (after the
+standard Flutter boilerplate and before `include(flutter/generated_plugins.cmake)`):
 
 ```cmake
-# Build the library
-add_subdirectory("path/to/myservice")
+# Path to the flutter_cpp_bridge C++ helpers header.
+# Flutter creates this symlink automatically during `flutter pub get`.
+set(FCB_CPP_INCLUDE
+  "${CMAKE_CURRENT_SOURCE_DIR}/flutter/ephemeral/.plugin_symlinks/flutter_cpp_bridge/linux/include"
+)
 
-# Install alongside the app (INSTALL_BUNDLE_LIB_DIR is set by Flutter's CMake)
+# Build the service library.
+add_subdirectory("myservice")
+
+# Install the .so alongside the app (INSTALL_BUNDLE_LIB_DIR is set by Flutter).
 install(TARGETS myservice
   LIBRARY DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime
