@@ -65,6 +65,7 @@ set(FCB_CPP_INCLUDE "${CMAKE_CURRENT_SOURCE_DIR}/../../linux/include")
 add_subdirectory("liba")
 add_subdirectory("libb")
 add_subdirectory("libalone")
+add_subdirectory("libc")
 
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)
@@ -121,6 +122,7 @@ endforeach(bundled_library)
 install(TARGETS liba LIBRARY DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
 install(TARGETS libb LIBRARY DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
 install(TARGETS libalone LIBRARY DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
+install(TARGETS libc LIBRARY DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
 
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/linux/")

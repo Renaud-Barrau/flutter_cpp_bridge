@@ -4,6 +4,7 @@ import 'package:flutter_cpp_bridge/service_pool.dart';
 import 'libalone.dart';
 import 'libaservice.dart';
 import 'libbservice.dart';
+import 'libcservice.dart';
 
 void main() {
   runApp(const MainApp());
@@ -16,6 +17,7 @@ class MainApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final ValueNotifier<int> color = ValueNotifier<int>(0x0000FFFF);
     final ValueNotifier<String> text = ValueNotifier<String>("abcde");
+    final ValueNotifier<int> count = ValueNotifier<int>(0);
 
     // Create services pool
     var servicePool = ServicePool();
@@ -24,8 +26,12 @@ class MainApp extends StatelessWidget {
     var libaService = LibAService("liba.so");
     var libbService = LibBService("libb.so");
 
-    // Example of standalone service
+    // Example of standalone service (no-op start/stop)
     var libAlone = AloneService("libalone.so");
+
+    // Example of standalone service with real start/stop (FCB_EXPORT_STANDALONE).
+    // start_service() resets the counter; stop_service() clears it.
+    var libC = LibCService("libc.so");
 
     // Binding service to frontend.
     // No nullptr check needed: assignJob callbacks are only invoked for real
@@ -78,6 +84,21 @@ class MainApp extends StatelessWidget {
                     ),
                   );
                 },
+              ),
+
+              const SizedBox(height: 24),
+              ValueListenableBuilder<int>(
+                valueListenable: count,
+                builder: (context, count, child) {
+                  return Text(
+                    'Count: $count',
+                    style: const TextStyle(fontSize: 20),
+                  );
+                },
+              ),
+              ElevatedButton(
+                onPressed: () => count.value = libC.increment(),
+                child: const Text('Increment (libc.so)'),
               ),
             ],
           ),
