@@ -7,9 +7,6 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    labels:
-      - "dependencies"
-      - "dart"
 
   # Dart/Flutter dependencies — example app
   - package-ecosystem: "pub"
@@ -17,9 +14,6 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    labels:
-      - "dependencies"
-      - "dart"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
@@ -27,6 +21,3 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    labels:
-      - "dependencies"
-      - "ci"
