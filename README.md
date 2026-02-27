@@ -96,18 +96,9 @@ The package ships a header-only helper at
 It provides two template types and macros that generate all five mandatory
 symbols, so you only write what is unique to your service.
 
-**Wire the header into your CMakeLists.txt:**
-
-```cmake
-# In your app's linux/CMakeLists.txt, before add_subdirectory("myservice"):
-# Flutter creates this symlink automatically during `flutter pub get`.
-set(FCB_CPP_INCLUDE
-  "${CMAKE_CURRENT_SOURCE_DIR}/flutter/ephemeral/.plugin_symlinks/flutter_cpp_bridge/linux/include"
-)
-
-# In each service library's CMakeLists.txt:
-target_include_directories(myservice PRIVATE "${FCB_CPP_INCLUDE}")
-```
+The complete CMake wiring (defining `FCB_CPP_INCLUDE` and the `install` rule)
+is covered in [Compiling your C++ libraries](#compiling-your-c-libraries-linux)
+below.
 
 **Pooled service — queue variant** (`fcb::Queue<T>`):
 Each `push()` enqueues one message; Dart reads them FIFO.
