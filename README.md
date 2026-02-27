@@ -265,23 +265,75 @@ class MyService extends Service {
 }
 ```
 
-### 2. Create a `ServicePool` and register your service
+### 2. Lifecycle management
+
+Register a job **before** starting the service so no message is ever dropped,
+then choose the lifecycle approach that fits your app.
+
+#### Option A — `ServicePool` (no extra dependencies)
 
 ```dart
 final pool    = ServicePool();
 final service = MyService('libmyservice.so');
 
+// Register first — before addService — so no early message is missed.
 service.assignJob((msg) {
-  // msg is guaranteed non-null here
   print('value: ${service.getValue(msg)}');
-  // freeMessage is called automatically after this callback returns
+  // freeMessage is called automatically after this callback returns.
 });
 
 pool.addService(service);   // calls start_service; Dart wakes up on demand
+// ...
+pool.dispose();             // stops all services, releases native callbacks
 ```
 
-Call `pool.dispose()` to stop all services and release the native callbacks.
-No `startPolling()` call is needed.
+`ServicePool` is a thin convenience wrapper: it calls `startService()` for you
+and lets you stop all services with a single `pool.dispose()`. It carries no
+state beyond the list of registered services.
+
+#### Option B — Riverpod `Notifier` (for apps already using flutter_riverpod)
+
+Each service lives inside its own `Notifier`. Riverpod manages the lifecycle
+automatically: `build()` starts the service, `ref.onDispose` stops it when the
+provider is no longer needed. No `ServicePool` is required.
+
+```dart
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'myservice.dart';
+
+class MyState {
+  final int value;
+  const MyState({required this.value});
+  MyState copyWith({int? value}) => MyState(value: value ?? this.value);
+}
+
+class MyNotifier extends Notifier<MyState> {
+  @override
+  MyState build() {
+    final service = MyService('libmyservice.so');
+
+    // assignJob before startService — same rule as with ServicePool.
+    service.assignJob((msg) {
+      state = state.copyWith(value: service.getValue(msg));
+    });
+
+    service.startService();
+    ref.onDispose(service.dispose);
+
+    return const MyState(value: 0);
+  }
+}
+
+final myProvider = NotifierProvider<MyNotifier, MyState>(MyNotifier.new);
+```
+
+The provider is then consumed like any other Riverpod provider:
+
+```dart
+// In a ConsumerWidget:
+final myState = ref.watch(myProvider);
+Text('value: ${myState.value}');
+```
 
 ### 3. Standalone services
 
@@ -308,18 +360,22 @@ greeter.dispose(); // calls stop_service and releases the NativeCallable
 
 ### 4. Sharing service instances across the app
 
-Use static members on a dedicated class to avoid threading service instances
-through constructors:
+**Without a state-management library**, use static members on a dedicated class:
 
 ```dart
+// app_services.dart
 class Services {
-  static final MyService   my      = MyService('libmyservice.so');
+  static final MyService    my      = MyService('libmyservice.so');
   static final HelloService greeter = HelloService('libhello.so');
 }
 
 // Anywhere in the app:
 Services.greeter.hello();
 ```
+
+**With Riverpod**, each `NotifierProvider` is already globally accessible
+through `ref` — no extra singleton class needed. Instantiation, lifecycle, and
+state are all handled by the provider graph.
 
 ## How event-driven delivery works
 
