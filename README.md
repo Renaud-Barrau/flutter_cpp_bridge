@@ -35,13 +35,18 @@ Add the package to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
+  flutter_cpp_bridge: ^1.0.1
+```
+
+Or pin to a specific Git commit:
+
+```yaml
+dependencies:
   flutter_cpp_bridge:
     git:
       url: https://github.com/Renaud-Barrau/flutter_cpp_bridge
+      ref: main
 ```
-
-> The package is not yet published on pub.dev. Install it directly from GitHub
-> using the `git` dependency syntax above.
 
 ## Your project layout
 

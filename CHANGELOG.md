@@ -1,3 +1,8 @@
+## 1.0.1
+
+* Update README installation instructions now that the package is on pub.dev.
+* Remove unused `ffigen` dev dependency.
+
 ## 1.0.0
 
 * First stable release — event-driven delivery is now the default and only
