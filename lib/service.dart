@@ -97,12 +97,10 @@ class Service {
         .asFunction<void Function(Pointer<BackendMsg>)>();
 
     final setMessageCallback = lib
-        .lookup<NativeFunction<
-            Void Function(Pointer<NativeFunction<_NotifyNative>>)>>(
-          'set_message_callback',
-        )
-        .asFunction<
-            void Function(Pointer<NativeFunction<_NotifyNative>>)>();
+        .lookup<
+          NativeFunction<Void Function(Pointer<NativeFunction<_NotifyNative>>)>
+        >('set_message_callback')
+        .asFunction<void Function(Pointer<NativeFunction<_NotifyNative>>)>();
 
     // NativeCallable.listener is safe to call from any thread: the C++ worker
     // posts the notification and Dart schedules _onNotify on the event loop.

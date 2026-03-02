@@ -3,6 +3,7 @@ project(libalone LANGUAGES CXX)
 
 add_library(libalone SHARED libalone.cpp)
 target_compile_features(libalone PRIVATE cxx_std_17)
+target_include_directories(libalone PRIVATE "${FCB_CPP_INCLUDE}")
 set_target_properties(libalone PROPERTIES
   CXX_VISIBILITY_PRESET default
   PREFIX ""          # produce libalone.so, not liblibalone.so

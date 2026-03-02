@@ -43,6 +43,29 @@ dependencies:
 > The package is not yet published on pub.dev. Install it directly from GitHub
 > using the `git` dependency syntax above.
 
+## Your project layout
+
+For each C++ service you want to call from Dart, you need:
+
+- A **Dart wrapper class** in `lib/` that extends `Service` or `StandaloneService`
+- A **C++ source file** + **CMakeLists.txt** in `linux/<myservice>/`
+- Two small additions to your app's `linux/CMakeLists.txt`
+
+```
+my_flutter_app/
+├── pubspec.yaml                    ← add flutter_cpp_bridge dependency
+├── lib/
+│   ├── main.dart
+│   └── myservice.dart             ← extends Service, binds extra C functions
+└── linux/
+    ├── CMakeLists.txt             ← add_subdirectory + install(TARGETS …)
+    └── myservice/
+        ├── CMakeLists.txt         ← add_library, PREFIX "", include dirs
+        └── myservice.cpp          ← your struct + worker + FCB_EXPORT_SYMBOLS
+```
+
+The sections below walk through each of these files.
+
 ## C++ side
 
 Each library must export **five** functions using C linkage. These are the only
@@ -71,76 +94,149 @@ EXPORT void  set_message_callback(void (*cb)());
 Any extra functions (to read fields, send commands, etc.) can be exported and
 bound on the Dart side through subclassing.
 
-### Minimal pooled service (C++)
+### C++ helpers (recommended)
 
-A service that produces messages at a regular interval:
+The package ships a header-only helper at
+`linux/include/flutter_cpp_bridge/service_helpers.h`.
+It provides two template types and macros that generate all five mandatory
+symbols, so you only write what is unique to your service.
+
+The complete CMake wiring (defining `FCB_CPP_INCLUDE` and the `install` rule)
+is covered in [Compiling your C++ libraries](#compiling-your-c-libraries-linux)
+below.
+
+**Pooled service — queue variant** (`fcb::Queue<T>`):
+Each `push()` enqueues one message; Dart reads them FIFO.
+Uses `std::deque` so `push_back()` never invalidates existing pointers.
 
 ```cpp
-#include <vector>
+#include <chrono>
+#include "flutter_cpp_bridge/service_helpers.h"
+
+struct my_message_t { int value; };
+
+static fcb::Queue<my_message_t> g_svc;
+
+static void worker(fcb::Queue<my_message_t>& svc) {
+    int i = 0;
+    while (!svc.stopped()) {
+        svc.push({i++});
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+}
+
+FCB_EXPORT_SYMBOLS(g_svc, worker)
+
+FCB_EXPORT int get_value(my_message_t* msg) { return msg->value; }
+```
+
+**Pooled service — current-value variant** (`fcb::CurrentValue<T>`):
+`set()` overwrites the single stored value; Dart reads it once then releases.
+Useful when only the latest value matters (e.g. a sensor reading).
+
+```cpp
+#include <chrono>
+#include "flutter_cpp_bridge/service_helpers.h"
+
+struct sensor_msg_t { float temperature; };
+
+static fcb::CurrentValue<sensor_msg_t> g_svc;
+
+static void worker(fcb::CurrentValue<sensor_msg_t>& svc) {
+    while (!svc.stopped()) {
+        svc.set({read_sensor()});
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+}
+
+FCB_EXPORT_SYMBOLS(g_svc, worker)
+```
+
+**Standalone service** (no message queue):
+
+```cpp
+#include <cstdio>
+#include "flutter_cpp_bridge/service_helpers.h"
+
+FCB_EXPORT_STANDALONE_NOOP()
+
+FCB_EXPORT void hello() {
+    printf("Hello from C++!\n");
+    fflush(stdout);
+}
+```
+
+For standalone services that need real start/stop logic, use
+`FCB_EXPORT_STANDALONE(start_fn, stop_fn)` instead.
+
+### Manual implementation (without helpers)
+
+If you prefer to write the five symbols by hand — or need behaviour not covered
+by the helpers — see the full manual example below. The pattern used by the
+helpers (`std::deque` + `_ready` flag) is described in the comments.
+
+**Pooled service (manual):**
+
+```cpp
+#include <deque>
 #include <mutex>
 #include <thread>
 #include <chrono>
 #include <atomic>
 
-#define EXPORT extern "C" __attribute__((visibility("default")))
+#define FCB_EXPORT extern "C" __attribute__((visibility("default")))
 
 struct my_message_t { int value; };
 
-static std::vector<my_message_t> queue;
+static std::deque<my_message_t> queue;  // deque: push_back never invalidates pointers
 static std::mutex mtx;
 static std::atomic<bool> running{false};
 static void (*g_callback)() = nullptr;
 
-EXPORT void set_message_callback(void (*cb)()) { g_callback = cb; }
+FCB_EXPORT void set_message_callback(void (*cb)()) { g_callback = cb; }
 
-EXPORT void start_service() {
+FCB_EXPORT void start_service() {
     running = true;
     std::thread([] {
         int i = 0;
         while (running) {
             { std::lock_guard<std::mutex> lock(mtx); queue.push_back({i++}); }
-            if (g_callback) g_callback();   // wake up Dart
+            if (g_callback) g_callback();
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
     }).detach();
 }
 
-EXPORT void stop_service()  { running = false; }
+FCB_EXPORT void stop_service()  { running = false; }
 
-EXPORT my_message_t* get_next_message() {
+FCB_EXPORT my_message_t* get_next_message() {
     std::lock_guard<std::mutex> lock(mtx);
     return queue.empty() ? nullptr : &queue.front();
 }
 
-EXPORT void free_message(my_message_t* msg) {
+FCB_EXPORT void free_message(my_message_t* msg) {
     std::lock_guard<std::mutex> lock(mtx);
-    for (size_t i = 0; i < queue.size(); ++i)
-        if (&queue[i] == msg) { queue.erase(queue.begin() + i); break; }
+    for (auto it = queue.begin(); it != queue.end(); ++it)
+        if (&(*it) == msg) { queue.erase(it); break; }
 }
 
-// Extra getter bound on the Dart side
-EXPORT int get_value(my_message_t* msg) { return msg->value; }
+FCB_EXPORT int get_value(my_message_t* msg) { return msg->value; }
 ```
 
-### Minimal standalone service (C++)
-
-A service used as a command sink (no message queue needed). All five mandatory
-symbols must be present; `get_next_message` always returns `nullptr`,
-`free_message` and `set_message_callback` are no-ops:
+**Standalone service (manual):**
 
 ```cpp
 #include <cstdio>
 
-#define EXPORT extern "C" __attribute__((visibility("default")))
+#define FCB_EXPORT extern "C" __attribute__((visibility("default")))
 
-EXPORT void  start_service()  {}
-EXPORT void  stop_service()   {}
-EXPORT void* get_next_message() { return nullptr; }
-EXPORT void  free_message([[maybe_unused]] void* msg) {}
-EXPORT void  set_message_callback([[maybe_unused]] void (*cb)()) {}
+FCB_EXPORT void  start_service()  {}
+FCB_EXPORT void  stop_service()   {}
+FCB_EXPORT void* get_next_message() { return nullptr; }
+FCB_EXPORT void  free_message([[maybe_unused]] void* msg) {}
+FCB_EXPORT void  set_message_callback([[maybe_unused]] void (*cb)()) {}
 
-// The actual function this library exposes
-EXPORT void hello() {
+FCB_EXPORT void hello() {
     printf("Hello from C++!\n");
     fflush(stdout);
 }
@@ -165,23 +261,75 @@ class MyService extends Service {
 }
 ```
 
-### 2. Create a `ServicePool` and register your service
+### 2. Lifecycle management
+
+Register a job **before** starting the service so no message is ever dropped,
+then choose the lifecycle approach that fits your app.
+
+#### Option A — `ServicePool` (no extra dependencies)
 
 ```dart
 final pool    = ServicePool();
 final service = MyService('libmyservice.so');
 
+// Register first — before addService — so no early message is missed.
 service.assignJob((msg) {
-  // msg is guaranteed non-null here
   print('value: ${service.getValue(msg)}');
-  // freeMessage is called automatically after this callback returns
+  // freeMessage is called automatically after this callback returns.
 });
 
 pool.addService(service);   // calls start_service; Dart wakes up on demand
+// ...
+pool.dispose();             // stops all services, releases native callbacks
 ```
 
-Call `pool.dispose()` to stop all services and release the native callbacks.
-No `startPolling()` call is needed.
+`ServicePool` is a thin convenience wrapper: it calls `startService()` for you
+and lets you stop all services with a single `pool.dispose()`. It carries no
+state beyond the list of registered services.
+
+#### Option B — Riverpod `Notifier` (for apps already using flutter_riverpod)
+
+Each service lives inside its own `Notifier`. Riverpod manages the lifecycle
+automatically: `build()` starts the service, `ref.onDispose` stops it when the
+provider is no longer needed. No `ServicePool` is required.
+
+```dart
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'myservice.dart';
+
+class MyState {
+  final int value;
+  const MyState({required this.value});
+  MyState copyWith({int? value}) => MyState(value: value ?? this.value);
+}
+
+class MyNotifier extends Notifier<MyState> {
+  @override
+  MyState build() {
+    final service = MyService('libmyservice.so');
+
+    // assignJob before startService — same rule as with ServicePool.
+    service.assignJob((msg) {
+      state = state.copyWith(value: service.getValue(msg));
+    });
+
+    service.startService();
+    ref.onDispose(service.dispose);
+
+    return const MyState(value: 0);
+  }
+}
+
+final myProvider = NotifierProvider<MyNotifier, MyState>(MyNotifier.new);
+```
+
+The provider is then consumed like any other Riverpod provider:
+
+```dart
+// In a ConsumerWidget:
+final myState = ref.watch(myProvider);
+Text('value: ${myState.value}');
+```
 
 ### 3. Standalone services
 
@@ -208,18 +356,22 @@ greeter.dispose(); // calls stop_service and releases the NativeCallable
 
 ### 4. Sharing service instances across the app
 
-Use static members on a dedicated class to avoid threading service instances
-through constructors:
+**Without a state-management library**, use static members on a dedicated class:
 
 ```dart
+// app_services.dart
 class Services {
-  static final MyService   my      = MyService('libmyservice.so');
+  static final MyService    my      = MyService('libmyservice.so');
   static final HelloService greeter = HelloService('libhello.so');
 }
 
 // Anywhere in the app:
 Services.greeter.hello();
 ```
+
+**With Riverpod**, each `NotifierProvider` is already globally accessible
+through `ref` — no extra singleton class needed. Instantiation, lifecycle, and
+state are all handled by the provider graph.
 
 ## How event-driven delivery works
 
@@ -252,6 +404,7 @@ project(myservice LANGUAGES CXX)
 
 add_library(myservice SHARED myservice.cpp)
 target_compile_features(myservice PRIVATE cxx_std_17)
+target_include_directories(myservice PRIVATE "${FCB_CPP_INCLUDE}")
 set_target_properties(myservice PROPERTIES
   CXX_VISIBILITY_PRESET default
   PREFIX ""               # produce myservice.so, not libmyservice.so
@@ -260,14 +413,20 @@ set_target_properties(myservice PROPERTIES
 
 ### Wiring into the Flutter app's CMakeLists.txt
 
-In your Flutter app's `linux/CMakeLists.txt`, add the subdirectory and install
-the resulting `.so` into the bundle's `lib/` directory:
+Add the following to your Flutter app's `linux/CMakeLists.txt` (after the
+standard Flutter boilerplate and before `include(flutter/generated_plugins.cmake)`):
 
 ```cmake
-# Build the library
-add_subdirectory("path/to/myservice")
+# Path to the flutter_cpp_bridge C++ helpers header.
+# Flutter creates this symlink automatically during `flutter pub get`.
+set(FCB_CPP_INCLUDE
+  "${CMAKE_CURRENT_SOURCE_DIR}/flutter/ephemeral/.plugin_symlinks/flutter_cpp_bridge/linux/include"
+)
 
-# Install alongside the app (INSTALL_BUNDLE_LIB_DIR is set by Flutter's CMake)
+# Build the service library.
+add_subdirectory("myservice")
+
+# Install the .so alongside the app (INSTALL_BUNDLE_LIB_DIR is set by Flutter).
 install(TARGETS myservice
   LIBRARY DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime

@@ -21,7 +21,6 @@ import 'service.dart';
 ///
 /// Call [dispose] when the pool is no longer needed to stop all services.
 class ServicePool {
-
   /// Stops all registered services and releases their native callbacks.
   void dispose() {
     for (final service in _services) {
