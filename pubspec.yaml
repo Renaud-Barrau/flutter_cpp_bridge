@@ -3,12 +3,17 @@ description: >-
   A Flutter package that simplifies calling C++ code from Dart via FFI.
   Provides Service, ServicePool, and StandaloneService abstractions around
   dart:ffi to manage C++ shared-library lifecycle and message polling.
-version: 0.1.0
+version: 1.0.0
 repository: https://github.com/Renaud-Barrau/flutter_cpp_bridge
 issue_tracker: https://github.com/Renaud-Barrau/flutter_cpp_bridge/issues
+topics:
+  - ffi
+  - native
+  - linux
+  - plugin
 
 environment:
-  sdk: ^3.10.7
+  sdk: ^3.1.0
   flutter: '>=3.3.0'
 
 dependencies:
@@ -21,7 +26,6 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  ffigen: ">=9.0.1 <21.0.0"
 
 flutter:
   plugin:

@@ -98,8 +98,9 @@ class Service {
 
     final setMessageCallback = lib
         .lookup<
-          NativeFunction<Void Function(Pointer<NativeFunction<_NotifyNative>>)>
-        >('set_message_callback')
+                NativeFunction<
+                    Void Function(Pointer<NativeFunction<_NotifyNative>>)>>(
+            'set_message_callback')
         .asFunction<void Function(Pointer<NativeFunction<_NotifyNative>>)>();
 
     // NativeCallable.listener is safe to call from any thread: the C++ worker

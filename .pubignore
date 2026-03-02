@@ -1,6 +1,13 @@
 # C++ plugin test (not relevant for Dart package consumers)
 linux/test/
 
+# IDE files
+*.iml
+*.ipr
+*.iws
+.idea/
+.vscode/
+
 # Build artifacts (mirrors .gitignore, since .pubignore replaces it)
 **/build/
 .dart_tool/

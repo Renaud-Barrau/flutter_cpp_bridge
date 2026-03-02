@@ -1,3 +1,9 @@
+## 1.0.0
+
+* First stable release — event-driven delivery is now the default and only
+  delivery mechanism. No breaking changes relative to 0.1.0.
+* Published on pub.dev.
+
 ## 0.1.0
 
 * Replace the `Timer.periodic` polling loop with an event-driven delivery
