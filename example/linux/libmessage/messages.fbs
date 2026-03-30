@@ -1,0 +1,52 @@
+// messages.fbs — FlatBuffers schema for the libmessage example.
+//
+// This schema is the single source of truth for the C++ ↔ Dart message
+// protocol.  Regenerate derived files after any change:
+//
+//   flatc --cpp --gen-mutable -o <cmake_build_dir>  messages.fbs
+//   flatc --dart             -o <example/lib/>      messages.fbs
+//
+// The generated C++ header is produced automatically by CMake (see
+// libmessage/CMakeLists.txt).  The Dart file must be regenerated manually
+// and committed (messages_generated.dart lives in example/lib/).
+
+namespace fcb_msgs;
+
+// ── Payload union ─────────────────────────────────────────────────────────────
+// Add new table variants here to extend the protocol.
+// Existing variants can gain new (optional) fields without breaking readers.
+
+union Payload {
+    ColorMsg,
+    TextMsg,
+}
+
+// ── Concrete payload types ────────────────────────────────────────────────────
+
+/// RGB colour value emitted by the worker.
+table ColorMsg {
+    r: uint8;
+    g: uint8;
+    b: uint8;
+}
+
+/// Arbitrary UTF-8 text.
+table TextMsg {
+    text: string (required);
+}
+
+// ── Envelope ──────────────────────────────────────────────────────────────────
+// Every message is wrapped in this table.
+//
+// `id`  — monotonically increasing sequence number set by the C++ worker.
+//          Useful for detecting dropped messages or correlating request/reply.
+//
+// `len` is NOT a field here; use get_msg_len() (exported by
+//          FCB_EXPORT_BYTES_SYMBOLS) to obtain the byte-buffer length.
+
+table Message {
+    id:      uint32;
+    payload: Payload;
+}
+
+root_type Message;

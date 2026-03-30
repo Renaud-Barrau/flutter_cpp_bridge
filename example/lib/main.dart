@@ -5,6 +5,7 @@ import 'libalone.dart';
 import 'libaservice.dart';
 import 'libbservice.dart';
 import 'libcservice.dart';
+import 'libmessageservice.dart';
 
 void main() {
   runApp(const MainApp());
@@ -18,6 +19,9 @@ class MainApp extends StatelessWidget {
     final ValueNotifier<int> color = ValueNotifier<int>(0x0000FFFF);
     final ValueNotifier<String> text = ValueNotifier<String>("abcde");
     final ValueNotifier<int> count = ValueNotifier<int>(0);
+    // libmessage: FlatBuffers-based dispatch (ColorMsg or TextMsg)
+    final ValueNotifier<Color> msgColor = ValueNotifier<Color>(Colors.grey);
+    final ValueNotifier<String> msgLog = ValueNotifier<String>('waiting…');
 
     // Create services pool
     var servicePool = ServicePool();
@@ -33,6 +37,9 @@ class MainApp extends StatelessWidget {
     // start_service() resets the counter; stop_service() clears it.
     var libC = LibCService("libc.so");
 
+    // FlatBuffers byte-buffer service: single service dispatching multiple types.
+    var libMsg = LibMessageService("libmessage.so");
+
     // Binding service to frontend.
     // No nullptr check needed: assignJob callbacks are only invoked for real
     // messages — the stream never emits nullptr since switching to NativeCallable.
@@ -46,8 +53,26 @@ class MainApp extends StatelessWidget {
       text.value = cPtr.toDartString();
     });
 
+    libMsg.assignJob((msg) {
+      final message = libMsg.decode(msg);
+      if (message == null) return;
+      switch (message.payloadType) {
+        case Payload.colorMsg:
+          final c = message.payload as ColorMsg;
+          msgColor.value = Color.fromARGB(255, c.r, c.g, c.b);
+          msgLog.value = '#${c.r.toRadixString(16).padLeft(2, '0')}'
+              '${c.g.toRadixString(16).padLeft(2, '0')}'
+              '${c.b.toRadixString(16).padLeft(2, '0')}'
+              ' (id=${message.id})';
+        case Payload.textMsg:
+          final t = message.payload as TextMsg;
+          msgLog.value = '${t.text} (id=${message.id})';
+      }
+    });
+
     servicePool.addService(libaService);
     servicePool.addService(libbService);
+    servicePool.addService(libMsg);
 
     // No startPolling() needed — delivery is event-driven via NativeCallable.
 
@@ -87,6 +112,29 @@ class MainApp extends StatelessWidget {
               ),
 
               const SizedBox(height: 24),
+
+              // ── libmessage: FlatBuffers dispatch ──────────────────────────
+              ValueListenableBuilder<Color>(
+                valueListenable: msgColor,
+                builder: (context, c, _) => Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: c,
+                    border: Border.all(color: Colors.black26),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+              ValueListenableBuilder<String>(
+                valueListenable: msgLog,
+                builder: (context, log, _) => Text(
+                  log,
+                  style: const TextStyle(fontSize: 16, fontFamily: 'monospace'),
+                ),
+              ),
+              const SizedBox(height: 24),
+
               ValueListenableBuilder<int>(
                 valueListenable: count,
                 builder: (context, count, child) {

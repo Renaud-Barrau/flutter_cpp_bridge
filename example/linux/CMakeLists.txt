@@ -66,6 +66,7 @@ add_subdirectory("liba")
 add_subdirectory("libb")
 add_subdirectory("libalone")
 add_subdirectory("libc")
+add_subdirectory("libmessage")
 
 # Run the Flutter tool portions of the build. This must not be removed.
 add_dependencies(${BINARY_NAME} flutter_assemble)
@@ -123,6 +124,7 @@ install(TARGETS liba LIBRARY DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT R
 install(TARGETS libb LIBRARY DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
 install(TARGETS libalone LIBRARY DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
 install(TARGETS libc LIBRARY DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
+install(TARGETS libmessage LIBRARY DESTINATION "${INSTALL_BUNDLE_LIB_DIR}" COMPONENT Runtime)
 
 # Copy the native assets provided by the build.dart from all packages.
 set(NATIVE_ASSETS_DIR "${PROJECT_BUILD_DIR}native_assets/linux/")
