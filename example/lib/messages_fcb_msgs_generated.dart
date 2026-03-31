@@ -6,7 +6,6 @@ library fcb_msgs;
 import 'dart:typed_data' show Uint8List;
 import 'package:flat_buffers/flat_buffers.dart' as fb;
 
-
 class PayloadTypeId {
   final int value;
   const PayloadTypeId._(this.value);
@@ -14,12 +13,12 @@ class PayloadTypeId {
   factory PayloadTypeId.fromValue(int value) {
     final result = values[value];
     if (result == null) {
-        throw StateError('Invalid value $value for bit flag enum PayloadTypeId');
+      throw StateError('Invalid value $value for bit flag enum PayloadTypeId');
     }
     return result;
   }
 
-  static PayloadTypeId? _createOrNull(int? value) => 
+  static PayloadTypeId? _createOrNull(int? value) =>
       value == null ? null : PayloadTypeId.fromValue(value);
 
   static const int minValue = 0;
@@ -32,7 +31,8 @@ class PayloadTypeId {
   static const Map<int, PayloadTypeId> values = {
     0: NONE,
     1: ColorMsg,
-    2: TextMsg};
+    2: TextMsg,
+  };
 
   static const fb.Reader<PayloadTypeId> reader = _PayloadTypeIdReader();
 
@@ -80,8 +80,8 @@ class _ColorMsgReader extends fb.TableReader<ColorMsg> {
   const _ColorMsgReader();
 
   @override
-  ColorMsg createObject(fb.BufferContext bc, int offset) => 
-    ColorMsg._(bc, offset);
+  ColorMsg createObject(fb.BufferContext bc, int offset) =>
+      ColorMsg._(bc, offset);
 }
 
 class ColorMsgBuilder {
@@ -97,10 +97,12 @@ class ColorMsgBuilder {
     fbBuilder.addUint8(0, r);
     return fbBuilder.offset;
   }
+
   int addG(int? g) {
     fbBuilder.addUint8(1, g);
     return fbBuilder.offset;
   }
+
   int addB(int? b) {
     fbBuilder.addUint8(2, b);
     return fbBuilder.offset;
@@ -116,14 +118,7 @@ class ColorMsgObjectBuilder extends fb.ObjectBuilder {
   final int? _g;
   final int? _b;
 
-  ColorMsgObjectBuilder({
-    int? r,
-    int? g,
-    int? b,
-  })
-      : _r = r,
-        _g = g,
-        _b = b;
+  ColorMsgObjectBuilder({int? r, int? g, int? b}) : _r = r, _g = g, _b = b;
 
   /// Finish building, and store into the [fbBuilder].
   @override
@@ -143,6 +138,7 @@ class ColorMsgObjectBuilder extends fb.ObjectBuilder {
     return fbBuilder.buffer;
   }
 }
+
 ///  Arbitrary UTF-8 text.
 class TextMsg {
   TextMsg._(this._bc, this._bcOffset);
@@ -156,7 +152,8 @@ class TextMsg {
   final fb.BufferContext _bc;
   final int _bcOffset;
 
-  String? get text => const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
+  String? get text =>
+      const fb.StringReader().vTableGetNullable(_bc, _bcOffset, 4);
 
   @override
   String toString() {
@@ -168,8 +165,8 @@ class _TextMsgReader extends fb.TableReader<TextMsg> {
   const _TextMsgReader();
 
   @override
-  TextMsg createObject(fb.BufferContext bc, int offset) => 
-    TextMsg._(bc, offset);
+  TextMsg createObject(fb.BufferContext bc, int offset) =>
+      TextMsg._(bc, offset);
 }
 
 class TextMsgBuilder {
@@ -194,15 +191,13 @@ class TextMsgBuilder {
 class TextMsgObjectBuilder extends fb.ObjectBuilder {
   final String? _text;
 
-  TextMsgObjectBuilder({
-    String? text,
-  })
-      : _text = text;
+  TextMsgObjectBuilder({String? text}) : _text = text;
 
   /// Finish building, and store into the [fbBuilder].
   @override
   int finish(fb.Builder fbBuilder) {
-    final int? textOffset = _text == null ? null
+    final int? textOffset = _text == null
+        ? null
         : fbBuilder.writeString(_text!);
     fbBuilder.startTable(1);
     fbBuilder.addOffset(0, textOffset);
@@ -217,6 +212,7 @@ class TextMsgObjectBuilder extends fb.ObjectBuilder {
     return fbBuilder.buffer;
   }
 }
+
 class Message {
   Message._(this._bc, this._bcOffset);
   factory Message(List<int> bytes) {
@@ -230,12 +226,17 @@ class Message {
   final int _bcOffset;
 
   int get id => const fb.Uint32Reader().vTableGet(_bc, _bcOffset, 4, 0);
-  PayloadTypeId? get payloadType => PayloadTypeId._createOrNull(const fb.Uint8Reader().vTableGetNullable(_bc, _bcOffset, 6));
+  PayloadTypeId? get payloadType => PayloadTypeId._createOrNull(
+    const fb.Uint8Reader().vTableGetNullable(_bc, _bcOffset, 6),
+  );
   dynamic get payload {
     switch (payloadType?.value) {
-      case 1: return ColorMsg.reader.vTableGetNullable(_bc, _bcOffset, 8);
-      case 2: return TextMsg.reader.vTableGetNullable(_bc, _bcOffset, 8);
-      default: return null;
+      case 1:
+        return ColorMsg.reader.vTableGetNullable(_bc, _bcOffset, 8);
+      case 2:
+        return TextMsg.reader.vTableGetNullable(_bc, _bcOffset, 8);
+      default:
+        return null;
     }
   }
 
@@ -249,8 +250,8 @@ class _MessageReader extends fb.TableReader<Message> {
   const _MessageReader();
 
   @override
-  Message createObject(fb.BufferContext bc, int offset) => 
-    Message._(bc, offset);
+  Message createObject(fb.BufferContext bc, int offset) =>
+      Message._(bc, offset);
 }
 
 class MessageBuilder {
@@ -266,10 +267,12 @@ class MessageBuilder {
     fbBuilder.addUint32(0, id);
     return fbBuilder.offset;
   }
+
   int addPayloadType(PayloadTypeId? payloadType) {
     fbBuilder.addUint8(1, payloadType?.value);
     return fbBuilder.offset;
   }
+
   int addPayloadOffset(int? offset) {
     fbBuilder.addOffset(2, offset);
     return fbBuilder.offset;
@@ -285,14 +288,10 @@ class MessageObjectBuilder extends fb.ObjectBuilder {
   final PayloadTypeId? _payloadType;
   final dynamic _payload;
 
-  MessageObjectBuilder({
-    int? id,
-    PayloadTypeId? payloadType,
-    dynamic payload,
-  })
-      : _id = id,
-        _payloadType = payloadType,
-        _payload = payload;
+  MessageObjectBuilder({int? id, PayloadTypeId? payloadType, dynamic payload})
+    : _id = id,
+      _payloadType = payloadType,
+      _payload = payload;
 
   /// Finish building, and store into the [fbBuilder].
   @override

@@ -54,6 +54,5 @@ class LibMessageService extends Service {
       _getBytes(msg).asTypedList(_getLen(msg));
 
   /// Convenience method: deserialise the buffer into a [Message].
-  Message? decode(Pointer<BackendMsg> msg) =>
-      Message(getMessageBytes(msg));
+  Message? decode(Pointer<BackendMsg> msg) => Message(getMessageBytes(msg));
 }
