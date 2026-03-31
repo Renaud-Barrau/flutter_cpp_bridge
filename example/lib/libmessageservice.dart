@@ -3,9 +3,9 @@ import 'dart:typed_data';
 
 import 'package:flutter_cpp_bridge/service.dart';
 
-import 'messages_generated.dart';
+import 'messages_fcb_msgs_generated.dart';
 
-export 'messages_generated.dart';
+export 'messages_fcb_msgs_generated.dart';
 
 /// Dart wrapper for libmessage.so.
 ///
@@ -55,5 +55,5 @@ class LibMessageService extends Service {
 
   /// Convenience method: deserialise the buffer into a [Message].
   Message? decode(Pointer<BackendMsg> msg) =>
-      Message.fromBuffer(getMessageBytes(msg));
+      Message(getMessageBytes(msg));
 }
