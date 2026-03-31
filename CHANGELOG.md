@@ -1,3 +1,8 @@
+## 1.0.3
+
+* Fix README image URLs to use absolute `raw.githubusercontent.com` paths
+  so diagrams render correctly on pub.dev.
+
 ## 1.0.2
 
 * Add byte-buffer service support via `FCB_EXPORT_BYTES_SYMBOLS` and `fcb::BytesQueue`,
