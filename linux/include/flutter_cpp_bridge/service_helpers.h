@@ -28,6 +28,28 @@
 //
 //   FCB_EXPORT int get_value(my_msg_t* msg) { return msg->value; }
 //
+// ─── Byte-buffer service (FlatBuffers, protobuf, …) ─────────────────────────
+//
+//   #include "flutter_cpp_bridge/service_helpers.h"
+//   #include "my_schema_generated.h"
+//
+//   static fcb::BytesQueue g_svc;
+//
+//   static void worker(fcb::BytesQueue& svc) {
+//       while (!svc.stopped()) {
+//           flatbuffers::FlatBufferBuilder fbb;
+//           // … build your message …
+//           fbb.Finish(/* root offset */);
+//           svc.push({fbb.GetBufferPointer(),
+//                     fbb.GetBufferPointer() + fbb.GetSize()});
+//       }
+//   }
+//
+//   FCB_EXPORT_BYTES_SYMBOLS(g_svc, worker)
+//   // Exports get_msg_bytes() and get_msg_len() in addition to the 5 mandatory
+//   // symbols. Dart reads the buffer via ptr.asTypedList(len) and deserialises
+//   // it with the generated Dart code (flatc --dart) or manually.
+//
 // ─── Standalone service (no queue) ──────────────────────────────────────────
 //
 //   #include "flutter_cpp_bridge/service_helpers.h"
@@ -40,9 +62,11 @@
 
 #pragma once
 #include <atomic>
+#include <cstdint>
 #include <deque>
 #include <mutex>
 #include <thread>
+#include <vector>
 
 // Visibility macro reused for all exported symbols (mandatory and extra).
 #define FCB_EXPORT extern "C" __attribute__((visibility("default")))
@@ -114,6 +138,12 @@ struct CurrentValue : ServiceBase {
     }
 };
 
+// ── BytesMsg / BytesQueue ────────────────────────────────────────────────────
+// Convenience aliases for services that exchange serialised byte buffers
+// (e.g. FlatBuffers, protobuf).  Use with FCB_EXPORT_BYTES_SYMBOLS.
+using BytesMsg   = std::vector<uint8_t>;
+using BytesQueue = Queue<BytesMsg>;
+
 } // namespace fcb
 
 // ── FCB_EXPORT_SYMBOLS ───────────────────────────────────────────────────────
@@ -163,3 +193,27 @@ struct CurrentValue : ServiceBase {
     FCB_EXPORT void* get_next_message()                     { return nullptr; }     \
     FCB_EXPORT void  free_message([[maybe_unused]] void* p) {}                      \
     FCB_EXPORT void  set_message_callback([[maybe_unused]] void (*cb)()) {}
+
+// ── FCB_EXPORT_BYTES_SYMBOLS ─────────────────────────────────────────────────
+// Variant of FCB_EXPORT_SYMBOLS for services whose messages are serialised
+// byte buffers (FlatBuffers, protobuf, …).
+//
+// The service variable must be of type fcb::BytesQueue.
+// Exports the five mandatory symbols (via FCB_EXPORT_SYMBOLS) plus two
+// extra symbols that Dart uses to access the raw buffer:
+//
+//   get_msg_bytes(fcb::BytesMsg*)  →  const uint8_t*   buffer data pointer
+//   get_msg_len (fcb::BytesMsg*)  →  uint32_t          buffer length in bytes
+//
+// On the Dart side, retrieve the buffer with:
+//   final bytes = getBytes(msg).asTypedList(getLen(msg));   // zero-copy view
+//   final message = Message.fromBuffer(bytes);              // flatbuffers
+//
+#define FCB_EXPORT_BYTES_SYMBOLS(svc, worker_fn)                                    \
+    FCB_EXPORT_SYMBOLS(svc, worker_fn)                                              \
+    FCB_EXPORT const uint8_t*                                                       \
+    get_msg_bytes(fcb::BytesMsg* msg) { return msg->data(); }                       \
+    FCB_EXPORT uint32_t                                                             \
+    get_msg_len (fcb::BytesMsg* msg) {                                              \
+        return static_cast<uint32_t>(msg->size());                                  \
+    }
