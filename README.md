@@ -6,6 +6,8 @@ A Flutter package that simplifies calling C++ shared libraries (`.so`) from Dart
 
 > **Target platform: Linux**, including embedded targets such as [flutter-pi](https://github.com/ardera/flutter-pi) (Raspberry Pi and similar SBCs).
 
+![Architecture overview](docs/flutter_cpp_bridge_architecture.png)
+
 ## Features
 
 - Load any `.so` with a single line; extra C functions bound via subclassing.
@@ -74,6 +76,9 @@ FCB_EXPORT void hello() { printf("Hello from C++!\n"); fflush(stdout); }
 
 ### Byte-buffer service (FlatBuffers, protobuf…)
 
+![FlatBuffers pipeline](docs/flatbuffers_architecture.png)
+
+
 `FCB_EXPORT_BYTES_SYMBOLS` generates the five mandatory symbols **plus** `get_msg_bytes` / `get_msg_len`, which let Dart read the raw buffer zero-copy.
 
 ```cpp
@@ -133,6 +138,10 @@ FCB_EXPORT_BYTES_SYMBOLS(g_svc, worker)
 ```
 
 Requires `libzmq3-dev` and `cppzmq-dev` (see [CMake — ZMQ](#cmake--zmq) below).
+
+## Dart API — class hierarchy
+
+![Dart class hierarchy](docs/service_architecture.png)
 
 ## Dart / Flutter side
 
