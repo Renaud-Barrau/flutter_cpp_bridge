@@ -22,7 +22,11 @@ import 'service.dart';
 /// Call [dispose] when the pool is no longer needed to stop all services.
 class ServicePool {
   /// Stops all registered services and releases their native callbacks.
+  ///
+  /// Safe to call multiple times.
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
     for (final service in _services) {
       service.dispose();
     }
@@ -32,10 +36,12 @@ class ServicePool {
   ///
   /// Returns `true` on success.
   bool addService(Service newService) {
+    assert(!_disposed, 'addService called on a disposed ServicePool');
     newService.startService();
     _services.add(newService);
     return true;
   }
 
+  bool _disposed = false;
   final _services = <Service>{};
 }

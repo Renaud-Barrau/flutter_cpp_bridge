@@ -119,9 +119,15 @@ class Service {
   /// service whose [getNextMessage] does not return `nullptr` immediately after
   /// the first call.
   void _onNotify() {
+    if (_disposed) return;
     final msg = getNextMessage();
     if (msg != nullptr) {
-      messageController.add(msg);
+      if (messageController.hasListener) {
+        messageController.add(msg);
+      } else {
+        // No listener registered: free immediately to avoid a C++ memory leak.
+        freeMessage(msg);
+      }
     }
   }
 
@@ -132,18 +138,27 @@ class Service {
   /// automatically once [job] returns.
   @nonVirtual
   void assignJob(void Function(Pointer<BackendMsg>) job) {
-    messageStream.listen((message) {
+    assert(!_disposed, 'assignJob called on a disposed Service');
+    _subscriptions.add(messageStream.listen((message) {
       job(message);
       freeMessage(message);
-    });
+    }));
   }
 
   /// Stops the service and releases the native callback.
   ///
-  /// Calls the C++ `stop_service` function and closes the [NativeCallable],
-  /// allowing the Dart isolate to exit cleanly.
+  /// Calls the C++ `stop_service` function, cancels all stream subscriptions,
+  /// closes the [StreamController], and closes the [NativeCallable], allowing
+  /// the Dart isolate to exit cleanly. Safe to call multiple times.
   void dispose() {
+    if (_disposed) return;
+    _disposed = true;
     stopService();
+    for (final sub in _subscriptions) {
+      sub.cancel();
+    }
+    _subscriptions.clear();
+    messageController.close();
     _callable.close();
   }
 
@@ -179,4 +194,6 @@ class Service {
   late void Function(Pointer<BackendMsg>) freeMessage;
 
   late NativeCallable<_NotifyNative> _callable;
+  bool _disposed = false;
+  final List<StreamSubscription<Pointer<BackendMsg>>> _subscriptions = [];
 }

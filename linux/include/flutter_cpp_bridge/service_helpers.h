@@ -106,6 +106,7 @@ struct Queue : ServiceBase {
     }
 
     void release(void* p) noexcept {
+        if (!p) return;
         std::lock_guard<std::mutex> lk(mtx);
         auto* typed = static_cast<T*>(p);
         for (auto it = _q.begin(); it != _q.end(); ++it)
@@ -132,7 +133,8 @@ struct CurrentValue : ServiceBase {
         return _ready ? static_cast<void*>(&_val) : nullptr;
     }
 
-    void release(void*) noexcept {
+    void release(void* p) noexcept {
+        if (!p) return;
         std::lock_guard<std::mutex> lk(mtx);
         _ready = false;
     }
