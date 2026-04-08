@@ -1,9 +1,6 @@
 name: flutter_cpp_bridge
-description: >-
-  A Flutter package that simplifies calling C++ code from Dart via FFI.
-  Provides Service, ServicePool, and StandaloneService abstractions around
-  dart:ffi for event-driven, zero-CPU-idle C++ shared-library integration.
-version: 1.0.3
+description: Bridge Flutter to C++ shared libraries via FFI. C++ owns all memory; Dart receives opaque message pointers with zero-copy, event-driven delivery.
+version: 1.0.4
 repository: https://github.com/Renaud-Barrau/flutter_cpp_bridge
 issue_tracker: https://github.com/Renaud-Barrau/flutter_cpp_bridge/issues
 topics:
