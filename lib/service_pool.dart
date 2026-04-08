@@ -37,6 +37,11 @@ class ServicePool {
   /// Returns `true` on success.
   bool addService(Service newService) {
     assert(!_disposed, 'addService called on a disposed ServicePool');
+    assert(
+      !_services.contains(newService),
+      'addService called with a Service already in the pool — '
+      'startService() would be called twice, spawning a second worker thread',
+    );
     newService.startService();
     _services.add(newService);
     return true;
