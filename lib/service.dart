@@ -107,14 +107,21 @@ class Service {
       // NativeCallable.listener is safe to call from any thread: the C++ worker
       // posts the notification and Dart schedules _onNotify on the event loop.
       _callable = NativeCallable<_NotifyNative>.listener(_onNotify);
+      // Register a GC finalizer so that _callable is closed even if a subclass
+      // constructor throws after super() — in that case dispose() is never
+      // called and the NativeCallable would otherwise keep the isolate alive
+      // forever.  dispose() calls _finalizer.detach(this) to prevent the
+      // finalizer from firing again after an explicit close.
+      _finalizer.attach(this, _callable!, detach: this);
       _setMessageCallback(_callable!.nativeFunction);
     } catch (_) {
       // Construction failed (missing symbol, library not found, …).
       // Mark as disposed so that dispose() becomes a no-op if called via
-      // try/finally. Close _callable if it was created before the exception —
-      // leaving it open would prevent the Dart isolate from exiting cleanly.
+      // try/finally. Detach the finalizer (no-op if never attached) and close
+      // _callable if it was created before the exception.
       _disposed = true;
       _messageController.close();
+      _finalizer.detach(this);
       _callable?.close();
       rethrow;
     }
@@ -180,6 +187,7 @@ class Service {
     }
     _subscriptions.clear();
     _messageController.close();
+    _finalizer.detach(this);
     _callable?.close();
   }
 
@@ -209,6 +217,9 @@ class Service {
 
   /// Bound to the C `free_message()` function.
   late void Function(Pointer<BackendMsg>) freeMessage;
+
+  static final _finalizer =
+      Finalizer<NativeCallable<_NotifyNative>>((c) => c.close());
 
   final StreamController<Pointer<BackendMsg>> _messageController =
       StreamController<Pointer<BackendMsg>>.broadcast();
