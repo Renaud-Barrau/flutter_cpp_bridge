@@ -75,14 +75,22 @@ namespace fcb {
 
 // ── Shared base ──────────────────────────────────────────────────────────────
 struct ServiceBase {
-    std::mutex           mtx;
-    std::atomic<bool>    stop_flag{false};
-    void               (*notify_cb)() = nullptr;
+    std::mutex                 mtx;
+    std::atomic<bool>          stop_flag{false};
+    // Stored as atomic so that set_message_callback (main thread) and notify()
+    // (worker thread) never race on the pointer.  acquire/release ordering
+    // ensures the Dart NativeCallable is fully visible before the worker reads
+    // it, and that a nullptr store from dispose() is visible before any
+    // subsequent worker call.
+    std::atomic<void(*)()>     notify_cb{nullptr};
 
     bool stopped() const noexcept {
         return stop_flag.load(std::memory_order_relaxed);
     }
-    void notify() const noexcept { if (notify_cb) notify_cb(); }
+    void notify() const noexcept {
+        auto cb = notify_cb.load(std::memory_order_acquire);
+        if (cb) cb();
+    }
 };
 
 // ── Queue variant ────────────────────────────────────────────────────────────
@@ -106,6 +114,7 @@ struct Queue : ServiceBase {
     }
 
     void release(void* p) noexcept {
+        if (!p) return;
         std::lock_guard<std::mutex> lk(mtx);
         auto* typed = static_cast<T*>(p);
         for (auto it = _q.begin(); it != _q.end(); ++it)
@@ -132,7 +141,8 @@ struct CurrentValue : ServiceBase {
         return _ready ? static_cast<void*>(&_val) : nullptr;
     }
 
-    void release(void*) noexcept {
+    void release(void* p) noexcept {
+        if (!p) return;
         std::lock_guard<std::mutex> lk(mtx);
         _ready = false;
     }
@@ -167,7 +177,7 @@ using BytesQueue = Queue<BytesMsg>;
     }                                                                               \
     FCB_EXPORT void* get_next_message()        { return (svc).next();    }          \
     FCB_EXPORT void  free_message(void* p)     { (svc).release(p);       }          \
-    FCB_EXPORT void  set_message_callback(void (*cb)()) { (svc).notify_cb = cb; }
+    FCB_EXPORT void  set_message_callback(void (*cb)()) { (svc).notify_cb.store(cb, std::memory_order_release); }
 
 // ── FCB_EXPORT_STANDALONE_NOOP ───────────────────────────────────────────────
 // Generates five no-op mandatory symbols for a standalone service (command
