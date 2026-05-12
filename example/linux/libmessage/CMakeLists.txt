@@ -32,6 +32,19 @@ add_custom_command(
 )
 add_custom_target(libmessage_fbs DEPENDS "${GENERATED_HEADER}")
 
+# ── Dart FlatBuffers codegen ──────────────────────────────────────────────────
+
+set(_FBS_FILE     "${CMAKE_CURRENT_SOURCE_DIR}/../../linux/libmessage/messages.fbs")
+set(_DART_OUT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../lib")
+
+add_custom_command(
+    OUTPUT  "${_DART_OUT_DIR}/messages_fcb_msgs_generated.dart"
+    COMMAND "$<TARGET_FILE:flatc>" --dart -o "${_DART_OUT_DIR}" "${_FBS_FILE}"
+    DEPENDS "${_FBS_FILE}"
+    COMMENT "flatc --dart messages.fbs"
+)
+add_custom_target(dart_fbs ALL DEPENDS "${_DART_OUT_DIR}/messages_fcb_msgs_generated.dart")
+
 # ── Service shared library ────────────────────────────────────────────────────
 add_library(libmessage SHARED libmessage.cpp)
 add_dependencies(libmessage libmessage_fbs)
